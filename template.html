@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="gray">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Colour theme: change data-theme on <html> above to "cream", "gray" or "teal".
+     To preview without editing, open the page with ?theme=gray (or cream / teal). -->
+<script>
+  (function () {
+    var t = new URLSearchParams(location.search).get('theme');
+    if (t && /^(cream|gray|teal)$/.test(t)) document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
+
+<title>SNaP: One-Step Posterior Sampling for Noisy Inverse Problems</title>
+<meta name="description" content="SNaP is a one-step MeanFlow posterior sampler for noisy linear inverse problems. A measurement-adapted Gaussian source lets one network evaluation produce a posterior sample, 30 to 2250x faster than iterative samplers.">
+<meta name="keywords" content="MeanFlow, one-step generation, posterior sampling, inverse problems, computational imaging, flow matching, MRI reconstruction, uncertainty quantification">
+
+<!-- Open Graph / social preview. Replace the URL once the page is live. -->
+<meta property="og:title" content="SNaP: One-Step Posterior Sampling for Noisy Inverse Problems">
+<meta property="og:description" content="A measurement-adapted source turns MeanFlow into a one-step posterior sampler: diverse, calibrated samples with one network evaluation per draw.">
+<meta property="og:image" content="./static/images/fig1_speed_and_averaging.jpg">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='14' fill='%233c4450'/><path d='M44 22c-2-4-6-6-12-6-7 0-12 4-12 9 0 12 25 7 25 18 0 5-5 9-13 9-6 0-11-3-13-7' fill='none' stroke='%23fff' stroke-width='7' stroke-linecap='round'/></svg>">
+<meta name="theme-color" content="#23262a">
+
+<link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Noto+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css">
+<link rel="stylesheet" href="./static/css/index.css">
+
+<script>
+  window.MathJax = {
+    tex: { inlineMath: [['$', '$']], displayMath: [['$$', '$$']] },
+    options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'] }
+  };
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+<script defer src="./static/js/index.js"></script>
+</head>
+
+<body>
+
+<!-- ==================== HERO ==================== -->
+<section class="hero">
+  <div class="container center">
+
+    <h1 class="publication-title">SNaP: One-Step Posterior Sampling<br>for Noisy Inverse Problems</h1>
+    <p class="publication-subtitle">Geometry-aware one-step transport from measurement to posterior</p>
+
+    <!-- Add personal homepages here, e.g. <a href="https://...">Shirin Shoushtari</a> -->
+    <div class="publication-authors">
+      <span class="author-block">Shirin Shoushtari<sup>1*</sup>,</span>
+      <span class="author-block">Edward P. Chandler<sup>2*</sup>,</span>
+      <span class="author-block">Xiao Shi<sup>2</sup>,</span>
+      <span class="author-block">Ulugbek S. Kamilov<sup>2</sup></span>
+    </div>
+
+    <div class="publication-authors affiliations">
+      <span class="author-block"><sup>1</sup>WashU</span>
+      <span class="author-block"><sup>2</sup>UW-Madison</span>
+      <span class="author-block"><sup>*</sup>Equal contribution</span>
+    </div>
+
+    <!-- Swap for the venue once the paper is accepted. -->
+    <div style="margin-top: 0.8rem;"><span class="badge">Preprint</span></div>
+
+    <div class="publication-links">
+      <a class="link-button" href="./static/pdfs/snap_paper.pdf">
+        <span class="icon"><i class="fas fa-file-pdf"></i></span><span>Paper</span>
+      </a>
+      <a class="link-button" href="https://arxiv.org/abs/2609.34071" target="_blank" rel="noopener">
+        <span class="icon"><i class="ai ai-arxiv"></i></span><span>arXiv</span>
+      </a>
+      <a class="link-button" href="https://github.com/wustl-cig/SNaP" target="_blank" rel="noopener">
+        <span class="icon"><i class="fab fa-github"></i></span><span>Code</span>
+      </a>
+      <a class="link-button" href="#BibTeX">
+        <span class="icon"><i class="fas fa-quote-left"></i></span><span>BibTeX</span>
+      </a>
+    </div>
+
+  </div>
+</section>
+
+<!-- ==================== TEASER ==================== -->
+<section class="teaser">
+  <div class="container wide center">
+    <div class="teaser-wrapper">
+      <img id="teaser" src="./static/images/teaser_small.jpg"
+           data-full="./static/images/fig1_speed_and_averaging.jpg"
+           alt="Left: LPIPS versus wall-clock time per sample on CelebA deblurring. Right: SNaP draws and their averages for 4x super-resolution on AFHQ-Cat.">
+    </div>
+    <p class="caption">
+      <b>Left:</b> LPIPS against wall-clock time per sample for CelebA Gaussian deblurring&mdash;SNaP reaches the
+      lowest LPIPS at a fraction of the cost of iterative samplers. <b>Right:</b> $4\times$ super-resolution on
+      AFHQ-Cat: one SNaP draw, then averages of $M = 4, 16, 100$ draws, and the ground truth. Every draw costs one
+      network evaluation; averaging trades fine detail for lower pixel error. <i>Click the figure to enlarge.</i>
+    </p>
+
+    <div class="stats">
+      <div class="stat"><div class="num">1 NFE</div><div class="lab">per posterior sample&mdash;one source solve and one network evaluation</div></div>
+      <div class="stat"><div class="num">&gt;30&times;</div><div class="lab">faster per sample than iterative posterior samplers on CelebA</div></div>
+      <div class="stat"><div class="num">12 ms</div><div class="lab">per 128&times;128 sample</div></div>
+    </div>
+  </div>
+</section>
+
+<div id="lightbox">
+  <img src="./static/images/fig1_speed_and_averaging.jpg" alt="Full resolution teaser figure">
+  <div class="hint">click anywhere or press Esc to close</div>
+</div>
+
+<!-- ==================== ABSTRACT ==================== -->
+<section class="section">
+  <div class="container">
+    <div class="card fade-in">
+      <h2 class="title">Abstract</h2>
+      <div class="narrow justify">
+        <p>
+          Diffusion and flow-matching models can produce high-quality posterior samples for inverse problems, but
+          typically require tens to thousands of network evaluations per draw. MeanFlow enables one-step generation,
+          yet applying it to inverse problems leaves no intermediate steps at which to enforce measurement
+          consistency. We introduce SNaP, a one-step MeanFlow posterior sampler for linear inverse problems with
+          Gaussian noise. Its central innovation is a measurement-adapted source: a Gaussian distribution whose mean
+          and anisotropic covariance are determined by the measurement operator, observation, and noise level. The
+          source anchors well-measured directions while preserving variation where the measurements are weak or
+          uninformative. We show that the exact conditional flow transports this source to the true posterior.
+          Across natural-image restoration and multi-coil MRI, SNaP produces diverse, high-quality samples with one
+          network evaluation per draw, 30 to 2250&times; faster than iterative samplers.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== METHOD ==================== -->
+<section class="section" id="method">
+  <div class="container wide">
+    <div class="card fade-in">
+      <h2 class="title">Method</h2>
+
+      <div class="narrow justify">
+        <h3 class="subtitle">Why one step is hard</h3>
+        <p>
+          Iterative posterior samplers pull toward the measurement $y = Ax_1 + n$ at every step of the trajectory.
+          MeanFlow collapses the trajectory into a single jump $x_1 = x_0 + u(x_0, 0, 1)$, so there is no intermediate
+          state left to correct. The obvious fix&mdash;condition the MeanFlow on $y$ and keep the isotropic
+          $\mathcal{N}(0, I)$ source&mdash;fails in a specific way: the draws become <em>nearly identical</em>, the
+          sampler degenerates into a point estimator, and averaging them gains nothing
+          (<a href="#ablations">calibration ratio 0.00</a>). SNaP changes where the transport starts instead.
+        </p>
+      </div>
+
+      <figure style="margin-top: 1.5rem;">
+        <img src="./static/images/fig2_geometry.png" loading="lazy"
+             alt="Schematic: likelihood tubes around the least-squares set; an isotropic source versus the SNaP source">
+        <figcaption class="caption">
+          <b>Geometry-aware one-step transport.</b> (a) Likelihood superlevel sets are tubes around the least-squares
+          set $\mathcal{S}_y$: narrow in well-measured directions (width $\propto \sigma_n/s_i$), wider in weakly
+          measured ones, unbounded along $\mathrm{null}(A)$. (b) An isotropic source spreads samples in every
+          direction, producing long source-to-posterior displacements. (c) The SNaP source is squeezed where the
+          measurement is informative and left wide where it is not, so displacements are short.
+        </figcaption>
+      </figure>
+
+      <div class="diagram" style="margin-top: 2rem;">
+        <svg viewBox="0 0 1120 400" xmlns="http://www.w3.org/2000/svg" role="img"
+             aria-label="One SNaP posterior sample: a perturb-and-solve step draws from the measurement-adapted Gaussian source, then one MeanFlow evaluation maps the draw to a posterior sample. Redrawing the auxiliary noise gives independent samples.">
+          <defs>
+            <marker id="arw" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto">
+              <path d="M0,0 L7,3.2 L0,6.4 z" class="d-head"/>
+            </marker>
+            <marker id="arwA" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto">
+              <path d="M0,0 L7,3.2 L0,6.4 z" class="d-head-a"/>
+            </marker>
+            <linearGradient id="gTeal" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" class="s-accent"/><stop offset="100%" class="s-accent-2"/>
+            </linearGradient>
+            <linearGradient id="gDark" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" class="s-dark-1"/><stop offset="100%" class="s-dark-3"/>
+            </linearGradient>
+          </defs>
+
+          <!-- one-sample container -->
+          <rect x="206" y="44" width="746" height="250" rx="16" class="d-loop" stroke-dasharray="5 4"/>
+          <text class="hd" x="226" y="68">ONE POSTERIOR SAMPLE &nbsp;=&nbsp; 1 SOLVE + 1 NETWORK EVALUATION</text>
+
+          <!-- inputs -->
+          <rect x="24" y="84" width="156" height="52" rx="11" class="d-box"/>
+          <text class="lbl" x="102" y="105" text-anchor="middle">measurement</text>
+          <text class="mth" x="102" y="125" text-anchor="middle">y = A x&#8321; + n</text>
+
+          <rect x="24" y="152" width="156" height="52" rx="11" class="d-box"/>
+          <text class="lbl" x="102" y="173" text-anchor="middle">operator &amp; noise level</text>
+          <text class="mth" x="102" y="193" text-anchor="middle">A, &nbsp;&sigma;&#8345;, &nbsp;&lambda; = &sigma;&#8345;&sup2; / &tau;&sup2;</text>
+
+          <rect x="24" y="220" width="156" height="60" rx="11" class="d-box"/>
+          <text class="lbl" x="102" y="241" text-anchor="middle">auxiliary randomness</text>
+          <text class="mth" x="102" y="262" text-anchor="middle">&epsilon; ~ N(0, &tau;&sup2;I)</text>
+          <text class="mth" x="102" y="276" text-anchor="middle" style="font-size:12px">n&prime; ~ N(0, &sigma;&#8345;&sup2;I)</text>
+
+          <path d="M180,110 C200,110 206,150 226,160" fill="none" class="d-arrow" stroke-width="1.6" marker-end="url(#arw)"/>
+          <path d="M180,178 L226,178" fill="none" class="d-arrow" stroke-width="1.6" marker-end="url(#arw)"/>
+          <path d="M180,250 C200,250 206,206 226,196" fill="none" class="d-arrow" stroke-width="1.6" marker-end="url(#arw)"/>
+
+          <!-- perturb-and-solve -->
+          <rect x="230" y="112" width="236" height="132" rx="13" fill="url(#gDark)"/>
+          <text class="lblw" x="348" y="138" text-anchor="middle">perturb-and-solve source</text>
+          <text class="mthw" x="348" y="166" text-anchor="middle">x&#8320; = &epsilon; + A&#7488;(AA&#7488; + &lambda;I)&#8315;&sup1;</text>
+          <text class="mthw" x="348" y="188" text-anchor="middle">&middot; (y &minus; A&epsilon; &minus; n&prime;)</text>
+          <text class="smlw" x="348" y="214" text-anchor="middle">no matrix square root&mdash;one solve:</text>
+          <text class="smlw" x="348" y="230" text-anchor="middle">diagonal, 2 FFTs, or a short CG (MRI)</text>
+
+          <path d="M466,178 L494,178" fill="none" class="d-arrow" stroke-width="1.8" marker-end="url(#arw)"/>
+
+          <!-- source distribution -->
+          <rect x="498" y="112" width="206" height="132" rx="13" class="d-box-hi"/>
+          <text class="lbl" x="601" y="138" text-anchor="middle">measurement-adapted source</text>
+          <text class="mth" x="601" y="166" text-anchor="middle">x&#8320; | y ~ N(m&#7527;, &tau;&sup2;W)</text>
+          <text class="sml" x="601" y="192" text-anchor="middle">variance along v&#7522;: &tau;&sup2;w&#7522;, with</text>
+          <text class="mth" x="601" y="212" text-anchor="middle">w&#7522; = &sigma;&#8345;&sup2; / (&sigma;&#8345;&sup2; + &tau;&sup2;s&#7522;&sup2;)</text>
+          <text class="sml" x="601" y="232" text-anchor="middle">tight if measured &middot; &tau;&sup2; on null(A)</text>
+
+          <path d="M704,178 L732,178" fill="none" class="d-arrow-a" stroke-width="1.8" marker-end="url(#arwA)"/>
+
+          <!-- one MeanFlow step -->
+          <rect x="736" y="112" width="198" height="132" rx="13" fill="url(#gTeal)"/>
+          <text class="lblo" x="835" y="138" text-anchor="middle">one MeanFlow step</text>
+          <text class="mtho" x="835" y="170" text-anchor="middle" style="font-size:12.5px">x&#770;&#8321; = x&#8320; + u&#952;(x&#8320;, 0, 1 | y, &sigma;&#8345;)</text>
+          <text class="smlo" x="835" y="198" text-anchor="middle">conditional average velocity</text>
+          <text class="smlo" x="835" y="214" text-anchor="middle">over the whole interval [0, 1]</text>
+          <text class="smlo" x="835" y="230" text-anchor="middle">no guidance &middot; no projection</text>
+
+          <!-- output -->
+          <path d="M934,178 L968,178" fill="none" class="d-arrow" stroke-width="1.8" marker-end="url(#arw)"/>
+          <rect x="972" y="140" width="124" height="76" rx="12" class="d-darkbox"/>
+          <text class="lblw" x="1034" y="168" text-anchor="middle">posterior</text>
+          <text class="lblw" x="1034" y="184" text-anchor="middle">sample</text>
+          <text class="mthw" x="1034" y="204" text-anchor="middle">x&#770;&#8321; &asymp; p(x&#8321; | y)</text>
+
+          <!-- redraw loop -->
+          <path d="M1034,216 C1034,372 400,372 102,282" fill="none" class="d-arrow-a" stroke-width="1.6"
+                stroke-dasharray="6 4" marker-end="url(#arwA)"/>
+          <text class="sml-a" x="580" y="370" text-anchor="middle">redraw (&epsilon;, n&prime;) with y fixed &rarr; M independent draws for M NFEs</text>
+          <text class="sml" x="580" y="387" text-anchor="middle">average them for distortion (PSNR / SSIM) &nbsp;&middot;&nbsp; read their spread as uncertainty</text>
+        </svg>
+      </div>
+
+      <div class="narrow justify" style="margin-top: 1.5rem;">
+        <h3 class="subtitle">The source is a design variable</h3>
+        <p>
+          Along the straight path from a source sample $x_0$ to a posterior sample $x_1$, the conditional velocity is
+          $x_1 - x_0$. SNaP keeps the path and the endpoint coupling fixed and designs the <em>source</em>, choosing a
+          family with a linear, measurement-dependent center $x_0 = Ky + \xi$, where $\xi$ has covariance $\Sigma$.
+          The expected displacement splits into a center term and a spread term:
+        </p>
+        <div class="eq-card">
+          $$ \mathbb{E}\big[\lVert x_1 - x_0 \rVert_2^2\big] \;=\; \operatorname{tr} R(K) \;+\; \operatorname{tr}\Sigma,
+             \qquad R(K) := \mathbb{E}\big[(x_1 - Ky)(x_1 - Ky)^\top\big]. $$
+        </div>
+        <p>
+          <b>Proposition&nbsp;1</b> shows the center term is uniquely minimized by the linear MMSE estimator
+          $K_C = CA^\top(ACA^\top + \sigma_n^2 I)^{-1}$, for any image distribution with covariance $C$. With the
+          isotropic working covariance $C = \tau^2 I$ this is the Tikhonov estimate, and matching the spread to its
+          error covariance gives the source
+        </p>
+        <div class="eq-card">
+          $$ q_\tau(x \mid y) = \mathcal{N}\big(x;\, m_y,\, \tau^2 W\big), \qquad \lambda = \sigma_n^2/\tau^2, $$
+          $$ m_y = A^\top(AA^\top + \lambda I)^{-1} y, \qquad
+             W = I - A^\top(AA^\top + \lambda I)^{-1} A. $$
+        </div>
+        <p>
+          In the right singular basis of $A$, the source variance along $v_i$ is $\tau^2 w_i$ with
+          $w_i = \sigma_n^2 / (\sigma_n^2 + \tau^2 s_i^2)$: small in well-measured directions, approaching
+          $\sigma_n^2/s_i^2$ when the signal dominates, and equal to $\tau^2$ on $\mathrm{null}(A)$. The Tikhonov center
+          also avoids amplifying noise in weakly measured directions, unlike the least-squares anchor $A^\dagger y$.
+          The working model is used only to build the source; it does not assume the images are Gaussian. As
+          $\sigma_n \to 0$ the source tends to $\mathcal{N}(A^\dagger y, \tau^2 P)$, which recovers the noiseless
+          NullFlow source.
+        </p>
+
+        <h3 class="subtitle">The target is still the true posterior</h3>
+        <p>
+          <b>Proposition&nbsp;2.</b> Let $x_0 \sim q_\tau(\cdot \mid y)$ and $x_1 \sim p(\cdot \mid y)$ be
+          conditionally independent and joined by straight lines. If the posterior has finite second moments and the
+          marginal flow has a terminal limit, the exact one-step map
+        </p>
+        <div class="eq-card">
+          $$ T_y(x) = x + u(x, 0, 1 \mid y) \quad\text{satisfies}\quad
+             (T_y)_\# \, q_\tau(\cdot \mid y) = p(\cdot \mid y) \quad \text{for every } \tau > 0. $$
+        </div>
+        <p>
+          The source changes the transport, not its destination; the trained network $u_\theta$ approximates $u$, so
+          SNaP samples inherit the guarantee up to that approximation error. A companion result (Lemma&nbsp;2) shows
+          that the irreducible velocity-regression error&mdash;the part no network can remove&mdash;is smaller
+          under $q_\tau$ than under any isotropic source $\mathcal{N}(0, \sigma^2 I)$ with $\sigma \ge \tau$.
+        </p>
+
+        <h3 class="subtitle">Training and sampling</h3>
+        <p>
+          Sampling $q_\tau$ directly would need $W^{1/2}$. <b>Perturb-and-solve</b> avoids it: with independent
+          $\epsilon \sim \mathcal{N}(0, \tau^2 I)$ and $n' \sim \mathcal{N}(0, \sigma_n^2 I)$,
+        </p>
+        <div class="eq-card">
+          $$ x_0 = \epsilon + A^\top (AA^\top + \lambda I)^{-1} \big(y - A\epsilon - n'\big)
+             \;\sim\; \mathcal{N}(m_y, \tau^2 W) \text{ exactly.} $$
+        </div>
+        <p>
+          The solve is elementwise for inpainting and super-resolution, two FFTs for deblurring, and 10&ndash;20
+          conjugate-gradient iterations for multi-coil MRI. The network is trained with the conditional MeanFlow
+          identity (one Jacobian&ndash;vector product per step) and the adaptive-weight loss of MeanFlow. At test time
+          each sample is one source draw and <strong>one network evaluation</strong>; redrawing $(\epsilon, n')$ with
+          $y$ fixed produces conditionally independent samples.
+        </p>
+      </div>
+
+      <h3 class="subtitle" style="text-align:center; border:0; padding:0; margin-top:2.25rem;">Algorithms</h3>
+      <div class="algo-grid">
+        <div class="algo">
+          <span class="algo-name">SampleSource&mdash;perturb-and-solve</span>
+          <code><span class="cm">require: y, A, &sigma;&#8345;, &tau;</span><br>
+          &lambda; &larr; &sigma;&#8345;&sup2; / &tau;&sup2;<br>
+          &epsilon; ~ N(0, &tau;&sup2;I), &nbsp; n&prime; ~ N(0, &sigma;&#8345;&sup2;I)<br>
+          r &larr; y &minus; A&epsilon; &minus; n&prime;<br>
+          x&#8320; &larr; &epsilon; + A&#7488;(AA&#7488; + &lambda;I)&#8315;&sup1; r<br>
+          <span class="kw">return</span> x&#8320;<br>
+          <span class="cm">&nbsp;</span><br>
+          <span class="cm">x&#8320; | y ~ N(m&#7527;, &tau;&sup2;W) exactly (Lemma 1);</span><br>
+          <span class="cm">no square root of W is formed</span></code>
+        </div>
+
+        <div class="algo">
+          <span class="algo-name">Training step</span>
+          <code><span class="cm">require: A, &sigma;&#8345;, &tau;, p<sub>ratio</sub> = 0.5</span><br>
+          x&#8321; ~ p, &nbsp; y &larr; A x&#8321; + n<br>
+          t ~ logit-normal<br>
+          r &larr; t w.p. p<sub>ratio</sub>, else r ~ U(0, t)<br>
+          x&#8320; &larr; SampleSource(y, A, &sigma;&#8345;, &tau;)<br>
+          z&#7523; &larr; (1&minus;r) x&#8320; + r x&#8321;, &nbsp; v &larr; x&#8321; &minus; x&#8320;<br>
+          u, d&#7523;u &larr; JVP(u&theta;; (z&#7523;, r, t), (v, 1, 0))<br>
+          u<sub>tgt</sub> &larr; v + (t &minus; r) sg[d&#7523;u]<br>
+          &ell; &larr; &Vert;u &minus; u<sub>tgt</sub>&Vert;&sup2; / n<br>
+          &theta; &larr; AdamW(&theta;, &nabla;<sub>&theta;</sub> sg[&omega;(&ell;)] &ell;)</code>
+        </div>
+
+        <div class="algo">
+          <span class="algo-name">Sampling&mdash;M posterior draws</span>
+          <code><span class="cm">require: y, A, &sigma;&#8345;, trained u&theta;, M</span><br>
+          <span class="kw">for</span> j = 1 &hellip; M <span class="kw">do</span><br>
+          &nbsp;&nbsp;x&#8320;&#8317;&#690;&#8318; &larr; SampleSource(y, A, &sigma;&#8345;, &tau;)<br>
+          &nbsp;&nbsp;u &larr; u&theta;(x&#8320;&#8317;&#690;&#8318;, 0, 1 | y, &sigma;&#8345;)<br>
+          &nbsp;&nbsp;x&#770;&#8321;&#8317;&#690;&#8318; &larr; x&#8320;&#8317;&#690;&#8318; + u<br>
+          <span class="kw">return</span> {x&#770;&#8321;&#8317;&#690;&#8318;}<br>
+          <span class="cm">M draws = M NFEs, one batched pass;</span><br>
+          <span class="cm">mean &rarr; distortion, spread &rarr; uncertainty</span></code>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== QUALITATIVE RESULTS ==================== -->
+<section class="section" id="results">
+  <div class="container wide">
+    <div class="card fade-in" data-tabgroup="qual">
+      <h2 class="title">Qualitative Results</h2>
+
+      <div class="tabs">
+        <button class="tab active" data-target="q-compare"><i class="fas fa-table-columns"></i> Comparison</button>
+        <button class="tab" data-target="q-mri"><i class="fas fa-brain"></i> Brain MRI</button>
+        <button class="tab" data-target="q-celeba-box"><i class="fas fa-user"></i> CelebA box</button>
+        <button class="tab" data-target="q-afhq-box"><i class="fas fa-cat"></i> AFHQ box</button>
+      </div>
+
+      <div class="panel active" id="q-compare">
+        <figure>
+          <img src="./static/images/fig3_qualitative.jpg" loading="lazy"
+               alt="Comparison with DPS, DiffPIR and Flower on CelebA super-resolution and AFHQ-Cat box inpainting and deblurring">
+          <figcaption class="caption">
+            <b>CelebA super-resolution, AFHQ-Cat box inpainting and deblurring.</b> Values report PSNR/LPIPS for the
+            displayed sample. SNaP uses one network evaluation, DiffPIR 100, and DPS and Flower 1000; SNaP attains the
+            best LPIPS on all three.
+          </figcaption>
+        </figure>
+      </div>
+
+      <div class="panel" id="q-mri">
+        <figure>
+          <img src="./static/images/fig4_mri_x8_20db.jpg" loading="lazy"
+               alt="Multi-coil fastMRI brain reconstructions at 8x acceleration and 20 dB input SNR">
+          <figcaption class="caption">
+            <b>fastMRI brain, multi-coil, &times;8 acceleration, 20&nbsp;dB input SNR.</b> Reconstructions with
+            PSNR/SSIM, error magnitude and a zoomed region. SNaP is competitive with one NFE; the baselines use 1000.
+          </figcaption>
+        </figure>
+      </div>
+
+      <div class="panel" id="q-celeba-box">
+        <figure>
+          <img src="./static/images/fig5_celeba_box.jpg" loading="lazy" style="max-width: 820px;"
+               alt="Box inpainting reconstructions on CelebA">
+          <figcaption class="caption"><b>Box inpainting on CelebA</b> (centered 40&times;40 mask, $\sigma_n = 0.05$).</figcaption>
+        </figure>
+      </div>
+
+      <div class="panel" id="q-afhq-box">
+        <figure>
+          <img src="./static/images/fig6_afhq_box.jpg" loading="lazy" style="max-width: 820px;"
+               alt="Box inpainting reconstructions on AFHQ-Cat">
+          <figcaption class="caption"><b>Box inpainting on AFHQ-Cat</b> (centered 80&times;80 mask, $\sigma_n = 0.05$).</figcaption>
+        </figure>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== POSTERIOR DRAWS ==================== -->
+<section class="section" id="draws">
+  <div class="container wide">
+    <div class="card fade-in" data-tabgroup="draws">
+      <h2 class="title">Diverse Posterior Draws</h2>
+      <div class="narrow justify">
+        <p>
+          Holding the measurement fixed and redrawing only the source noise gives independent samples. Each figure
+          shows six draws for one CelebA box-inpainting measurement from DPS (1000 NFEs per draw), Flower1-OT (100)
+          and SNaP (1). Variation should appear inside the masked box, where the measurement says nothing, and
+          vanish where the pixels are observed.
+        </p>
+      </div>
+
+      <div class="tabs">
+        <button class="tab active" data-target="d-1"><i class="fas fa-shuffle"></i> Draws I</button>
+        <button class="tab" data-target="d-2"><i class="fas fa-shuffle"></i> Draws II</button>
+      </div>
+
+      <div class="panel active" id="d-1">
+        <figure>
+          <img src="./static/images/fig9_draws_box.jpg" loading="lazy" alt="Six box-inpainting draws each from DPS, Flower1-OT and SNaP">
+          <figcaption class="caption">Six independent draws per method for one box-inpainting measurement. Rows: DPS, Flower1-OT, SNaP.</figcaption>
+        </figure>
+      </div>
+      <div class="panel" id="d-2">
+        <figure>
+          <img src="./static/images/fig10_draws_box.jpg" loading="lazy" alt="Six box-inpainting draws each from DPS, Flower1-OT and SNaP">
+          <figcaption class="caption">Six draws per method for a second measurement. Rows: DPS, Flower1-OT, SNaP.</figcaption>
+        </figure>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== EFFICIENCY ==================== -->
+<section class="section" id="efficiency">
+  <div class="container wide">
+    <div class="card fade-in">
+      <h2 class="title">Inference Cost</h2>
+      <div class="narrow justify">
+        <p>
+          A SNaP sample costs one network evaluation and one source draw. The source solve with
+          $(AA^\top + \lambda I)^{-1}$ is diagonal or Fourier-diagonal for the natural-image operators and a short
+          conjugate-gradient run for multi-coil MRI, so it adds little to the network call. That makes SNaP
+          <strong>30 to 2250&times; faster</strong> per sample than the iterative samplers on CelebA deblurring and
+          <strong>335 to 563&times; faster</strong> at &times;8 MRI acceleration.
+        </p>
+      </div>
+
+      <div class="table-scroll" style="margin-top: 1.25rem;">
+        <!--TABLE_COST_CELEBA-->
+      </div>
+      <div class="table-scroll" style="margin-top: 1rem;">
+        <!--TABLE_COST_MRI-->
+      </div>
+      <p class="legend">
+        NFE and single-batch wall-clock time per posterior sample. <span class="sw-best">Best</span> in each row.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== QUANTITATIVE TABLES ==================== -->
+<section class="section" id="tables">
+  <div class="container wide">
+    <div class="card fade-in" data-tabgroup="tables">
+      <h2 class="title">Quantitative Results</h2>
+      <div class="narrow justify">
+        <p>
+          100 test measurements per setting. Natural-image degradations follow PnP-Flow and Flower with
+          $\sigma_n = 0.05$ (0.01 for random inpainting): a $61\times61$ Gaussian blur, $\times2$ (CelebA) or
+          $\times4$ (AFHQ-Cat) strided super-resolution, 70% random inpainting, and a centered $40\times40$ or
+          $80\times80$ box. MRI uses $A = MFS$ with ESPIRiT sensitivities at $\times4$ and $\times8$ Cartesian
+          acceleration. For SNaP we report a single draw ($M = 1$) and the average of $M$ draws, which costs $M$ NFEs.
+        </p>
+        <p>
+          A single SNaP draw is competitive in LPIPS at one NFE; averaging draws attains the best SSIM on every CelebA
+          task and the best PSNR on three of four. SNaP also reaches the best FID on two of three CelebA operators and
+          the calibration ratio closest to 1 on all three.
+        </p>
+      </div>
+
+      <div class="tabs">
+        <button class="tab active" data-target="tb-celeba"><i class="fas fa-user"></i> CelebA 128&times;128</button>
+        <button class="tab" data-target="tb-afhq"><i class="fas fa-cat"></i> AFHQ-Cat 256&times;256</button>
+        <button class="tab" data-target="tb-fid"><i class="fas fa-bullseye"></i> FID &amp; calibration</button>
+        <button class="tab" data-target="tb-mri"><i class="fas fa-brain"></i> fastMRI brain</button>
+      </div>
+
+      <div class="panel active" id="tb-celeba">
+        <div class="table-scroll">
+          <!--TABLE_CELEBA-->
+        </div>
+        <p class="legend">
+          100 CelebA test images. <span class="sw-best">Best</span> and
+          <span class="sw-second">second best</span> among all methods (the degraded reference is excluded).
+          &ndash; marks a setting where a baseline does not apply. Scroll the table sideways on narrow screens.
+        </p>
+      </div>
+
+      <div class="panel" id="tb-afhq">
+        <div class="table-scroll">
+          <!--TABLE_AFHQ-->
+        </div>
+        <p class="legend">
+          100 AFHQ-Cat test images. PnP-Flow and Flower step counts depend on the operator, hence the NFE range.
+          The MSE regressor is omitted on box inpainting, where its output is the blurred conditional mean of the
+          masked region. <span class="sw-best">Best</span> and <span class="sw-second">second best</span>.
+        </p>
+      </div>
+
+      <div class="panel" id="tb-fid">
+        <div class="narrow justify">
+          <p>
+            PSNR, SSIM and LPIPS do not say whether the <em>spread</em> of the draws is the right size. The
+            calibration ratio $\Delta_{\text{cal}} = V/B$ divides the variance $V$ of the draws by the squared error
+            $B$ of their mean; for an exact posterior sampler the two are equal. Values below 1 mean draws collapsed
+            toward a point estimate, above 1 over-dispersed. It is a second-moment check, not a coverage certificate.
+          </p>
+        </div>
+        <div class="table-scroll" style="margin-top: 1.25rem;">
+          <!--TABLE_FIDCAL-->
+        </div>
+        <p class="legend">
+          CelebA. Every SNaP entry is a single draw; FID on 2048 reconstructions, $\Delta_{\text{cal}}$ with $M = 100$.
+          <span class="sw-best">Best</span> and <span class="sw-second">second best</span>
+          ($\Delta_{\text{cal}}$ ranked by distance to 1).
+        </p>
+      </div>
+
+      <div class="panel" id="tb-mri">
+        <div class="table-scroll">
+          <!--TABLE_MRI-->
+        </div>
+        <p class="legend">
+          100 multi-coil fastMRI brain (AXT2) test slices; PSNR/SSIM on magnitude images.
+          <span class="sw-best">Best</span> and <span class="sw-second">second best</span> among all methods.
+          Among the posterior samplers, SNaP is competitive with a single NFE.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== ABLATIONS ==================== -->
+<section class="section" id="ablations">
+  <div class="container wide">
+    <div class="card fade-in" data-tabgroup="abl">
+      <h2 class="title">Ablations and Robustness</h2>
+
+      <div class="tabs">
+        <button class="tab active" data-target="a-source"><i class="fas fa-bullseye"></i> Source distribution</button>
+        <button class="tab" data-target="a-noise"><i class="fas fa-wave-square"></i> Noise mismatch</button>
+        <button class="tab" data-target="a-tau"><i class="fas fa-sliders"></i> Scale &tau;</button>
+        <button class="tab" data-target="a-steps"><i class="fas fa-shoe-prints"></i> Few-step</button>
+      </div>
+
+      <div class="panel active" id="a-source">
+        <div class="narrow justify">
+          <p>
+            Same network, conditioning and schedule; <em>only the source differs</em>. With either isotropic source
+            the calibration ratio falls to 0.00: the draws are near-identical, the sampler has become a point
+            estimator with a random input, and averaging 100 draws changes nothing. The measurement-adapted source
+            keeps the draws dispersed. Its single-draw advantage is perceptual (LPIPS 0.018 vs. 0.030), and its
+            average overtakes the isotropic sources in PSNR.
+          </p>
+        </div>
+        <div class="table-scroll" style="margin-top: 1.25rem;"><!--TABLE_SOURCE--></div>
+        <p class="legend">CelebA Gaussian deblurring, $\sigma_n = 0.05$.</p>
+        <figure style="margin-top: 1.75rem;">
+          <img src="./static/images/fig12_source_draws.jpg" loading="lazy"
+               alt="Six draws and per-pixel standard deviation under the three sources">
+          <figcaption class="caption">
+            <b>Six draws per source for one measurement</b>, with the per-pixel standard deviation on the same
+            &times;20 scale. Under the SNaP source the draws differ in the hair, skin texture and the region behind
+            the sunglasses, and the spread concentrates on edges the blur suppressed. Under either isotropic source
+            the draws are indistinguishable and the spread map is black&mdash;raising $\tau$ from 0.15 to 1.0 does
+            not restore it, so it is the <em>shape</em> of the source, not its size, that sets the spread.
+          </figcaption>
+        </figure>
+        <figure style="margin-top: 1.5rem;">
+          <img src="./static/images/fig13_averaging_budget.png" loading="lazy" style="max-width: 820px;"
+               alt="PSNR and LPIPS against the number of averaged draws for the three sources">
+          <figcaption class="caption">
+            PSNR (left) and LPIPS (right) against the number of averaged draws $M$. Only the SNaP source responds to
+            $M$; the isotropic curves are flat because their draws carry almost no variance to average away.
+          </figcaption>
+        </figure>
+      </div>
+
+      <div class="panel" id="a-noise">
+        <div class="narrow justify">
+          <p>
+            $\sigma_n$ enters the source in closed form, so a wrong value changes how the source allocates
+            uncertainty rather than breaking the method. A model trained at $\sigma_n = 0.05$ and tested on cleaner
+            measurements (over-estimating the noise by up to 5&times;) degrades gracefully: PSNR still rises as the
+            measurements get cleaner and LPIPS stays within 0.017&ndash;0.020. Under-estimation is not tested.
+          </p>
+        </div>
+        <div class="table-scroll" style="margin-top: 1.25rem;"><!--TABLE_NOISE--></div>
+        <p class="legend">CelebA Gaussian deblurring; source and model fixed at $\sigma_n = 0.05$.</p>
+      </div>
+
+      <div class="panel" id="a-tau">
+        <div class="narrow justify">
+          <p>
+            Proposition&nbsp;2 says $\tau$ shapes the transport but not its target, so it is a design parameter
+            rather than a modelling choice. Distortion is indistinguishable between $\tau = 0.15$ and $0.5$ at every
+            $M$ and drops about 0.4&nbsp;dB at $\tau = 1.0$; the relative spread of the draws (5.49%, 5.48%, 5.72%)
+            barely moves. $\tau$ does not need precise tuning.
+          </p>
+        </div>
+        <div class="table-scroll" style="margin-top: 1.25rem;"><!--TABLE_TAU--></div>
+        <p class="legend">CelebA Gaussian deblurring, 100 test measurements; $M$ = number of averaged draws.</p>
+      </div>
+
+      <div class="panel" id="a-steps">
+        <div class="narrow justify">
+          <p>
+            Composing $u_{r,t}$ over a uniform partition of $[0,1]$ gives $k$-step sampling without retraining. More
+            steps are <em>not</em> monotonically better: every metric peaks at $k = 2$ and declines afterwards, and
+            $k = 8$ is worse than one step for $M \ge 16$. The model is trained to jump source-to-data, so evaluating
+            it at intermediate $(r,t)$ compounds its error. The gain at $k = 2$ is small, so SNaP uses $k = 1$.
+          </p>
+        </div>
+        <div class="table-scroll" style="margin-top: 1.25rem;"><!--TABLE_STEPS--></div>
+        <p class="legend">CelebA Gaussian deblurring, $\tau = 0.15$.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== ACKNOWLEDGMENTS ==================== -->
+<section class="section" id="acknowledgments">
+  <div class="container">
+    <div class="card fade-in">
+      <h2 class="title">Acknowledgments</h2>
+      <div class="narrow justify">
+        <p>
+          This work was supported in part by the National Science Foundation under CAREER award CCF-2625643 and
+          award CCF-2622128.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== BIBTEX ==================== -->
+<section class="section" id="BibTeX">
+  <div class="container">
+    <div class="card fade-in">
+      <h2 class="title">BibTeX</h2>
+      <div class="bibtex-wrapper">
+        <button class="bibtex-copy-btn" onclick="copyBibtex(this)" title="Copy to clipboard">
+          <i class="fas fa-copy"></i><span>Copy</span>
+        </button>
+<pre><code id="bibtex-code">@article{shoushtari2026snap,
+  title   = {SNaP: One-Step Posterior Sampling for Noisy Inverse Problems},
+  author  = {Shoushtari, Shirin and Chandler, Edward P. and Shi, Xiao
+             and Kamilov, Ulugbek S.},
+  journal = {arXiv preprint arXiv:2609.34071},
+  year    = {2026}
+}</code></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== FOOTER ==================== -->
+<footer class="footer">
+  <div class="container">
+    <p>
+      This website is licensed under a
+      <a rel="license" href="http://creativecommons.org/licenses/by-sa/4.0/">Creative Commons
+      Attribution-ShareAlike 4.0 International License</a>. The page layout is adapted from
+      <a href="https://github.com/nerfies/nerfies.github.io">Nerfies</a>.
+    </p>
+    <p>
+      Computational Imaging Group (CIG) &middot; UW-Madison
+    </p>
+  </div>
+</footer>
+
+</body>
+</html>
